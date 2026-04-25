@@ -23,7 +23,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsup",
@@ -44,7 +45,7 @@
     "error-analysis",
     "nodejs"
   ],
-  "author": "",
+  "author": "Anuvrat Joshi <joshianuvrat@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
