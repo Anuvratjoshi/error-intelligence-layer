@@ -138,9 +138,9 @@ export interface AnalyzedError {
   /** Human-readable fix suggestions produced by the intelligence layer. */
   suggestions: string[];
   /**
-   * AI-generated suggestions from the xAI Grok API.
-   * Populated only when `xaiApiKey` is configured and `enableAISuggestions` is true.
-   * Contains a rate-limit message when the daily quota is exhausted.
+   * AI-generated suggestions from the configured provider (Groq, xAI, etc.).
+   * Populated only when `aiApiKey` is set and `enableAISuggestions` is true.
+   * Undefined when AI is disabled or unconfigured.
    */
   aiSuggestion?: string[];
   /** Runtime environment snapshot (null when includeEnv: false). */
@@ -169,6 +169,23 @@ export interface AnalyzeOptions {
   format?: FormatType;
   /** Whether to include process/env info (default: from global config). */
   includeEnv?: boolean;
+  /**
+   * Extra context passed to the AI layer to improve suggestion quality.
+   *
+   * You can pass:
+   * - The source code of the function that threw (e.g. `fn.toString()`)
+   * - A short description of what the code was doing ("fetching user profile")
+   * - Any other relevant string (query, config, variable state)
+   *
+   * Included in the AI prompt verbatim. Has no effect when AI is disabled.
+   *
+   * @example
+   * await analyzeErrorAsync(err, { context: fetchUser.toString() });
+   *
+   * @example
+   * await analyzeErrorAsync(err, { context: "Parsing JWT from Authorization header" });
+   */
+  context?: string;
 }
 
 /** Options accepted by `createError()`. */
@@ -204,27 +221,50 @@ export interface EILConfig {
   maxCauseDepth: number;
   /** Whether registered plugins are executed. */
   enablePlugins: boolean;
+
+  // ── AI suggestions (optional) ────────────────────────────────────────────
+
   /**
-   * Optional xAI (Grok) API key.
-   * When set, `analyzeErrorAsync()` will call the Grok API to generate
-   * AI-powered suggestions and populate `aiSuggestion` on the result.
-   * Each user supplies their own key — obtain one at https://console.x.ai
+   * API key for your chosen AI provider (Groq, xAI, OpenRouter, etc.).
+   * Each user supplies their own key — never shared.
+   *
+   * Groq (free tier, 14 400 req/day, no credit card):
+   *   https://console.groq.com → API Keys → Create
+   *
+   * xAI Grok:
+   *   https://console.x.ai → API Keys → Create
    */
-  xaiApiKey?: string;
+  aiApiKey?: string;
+
   /**
-   * Enable AI suggestions via the Grok API.
-   * Requires `xaiApiKey` to be set. Defaults to false.
+   * Base URL of an OpenAI-compatible chat-completions endpoint.
+   *
+   * Defaults to Groq: `"https://api.groq.com/openai/v1"`
+   *
+   * Other options:
+   *   - xAI:       `"https://api.x.ai/v1"`
+   *   - OpenRouter:`"https://openrouter.ai/api/v1"`
+   */
+  aiBaseUrl: string;
+
+  /**
+   * Model name passed to the provider.
+   * Defaults to `"llama-3.3-70b-versatile"` (free on Groq).
+   *
+   * Groq free models: llama-3.3-70b-versatile, llama3-8b-8192, gemma2-9b-it
+   * xAI models:       grok-3-mini
+   */
+  aiModel: string;
+
+  /**
+   * Enable AI suggestions. Requires `aiApiKey` to be set.
+   * Defaults to false.
    */
   enableAISuggestions: boolean;
-  /**
-   * Grok model to use for AI suggestions.
-   * Defaults to "grok-3-mini" (fast and free-tier eligible).
-   */
-  grokModel: string;
 }
 
 // ─────────────────────────────────────────────
-// AI suggestion result
+// AI result (internal)
 // ─────────────────────────────────────────────
 
 /** Internal result shape returned by the AI layer. */

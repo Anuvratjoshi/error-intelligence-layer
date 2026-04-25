@@ -31,49 +31,6 @@ export function analyzeError(
 }
 
 // ─────────────────────────────────────────────
-// analyzeErrorAsync
-// ─────────────────────────────────────────────
-
-/**
- * Async variant of `analyzeError` that additionally calls the xAI Grok API
- * to populate the `aiSuggestion` field on the result.
- *
- * Requires `xaiApiKey` and `enableAISuggestions: true` in `configure()`.
- * Falls back gracefully — if AI is disabled or the API call fails, the result
- * is identical to `analyzeError()` plus an informational `aiSuggestion` entry.
- *
- * @example
- * ```ts
- * import { configure, analyzeErrorAsync } from "error-intelligence-layer";
- *
- * configure({ xaiApiKey: process.env.XAI_API_KEY, enableAISuggestions: true });
- *
- * const analyzed = await analyzeErrorAsync(error);
- * console.log(analyzed.suggestions);    // pattern-based, always present
- * console.log(analyzed.aiSuggestion);   // AI-generated, when configured
- * ```
- */
-export async function analyzeErrorAsync(
-  error: unknown,
-  options: AnalyzeOptions = {},
-): Promise<AnalyzedError> {
-  const analyzed = runPipeline(error, options);
-  const config = getConfig();
-
-  if (!config.enableAISuggestions || !config.xaiApiKey) {
-    return analyzed;
-  }
-
-  const aiResult = await fetchAISuggestions(
-    analyzed,
-    config.xaiApiKey,
-    config.grokModel,
-  );
-
-  return { ...analyzed, aiSuggestion: aiResult.suggestions };
-}
-
-// ─────────────────────────────────────────────
 // createError
 // ─────────────────────────────────────────────
 
@@ -223,4 +180,127 @@ export function getErrorFingerprint(error: unknown): string {
   const normalized = normalizeError(error);
   const frames = parseStack(normalized);
   return buildFingerprint(normalized.type, normalized.message, frames);
+}
+
+// ─────────────────────────────────────────────
+// AI enrichment (shared internal helper)
+// ─────────────────────────────────────────────
+
+/**
+ * Calls the configured AI provider and returns a copy of `analyzed` with
+ * `aiSuggestion` populated. Never throws — any failure is surfaced as a
+ * message inside `aiSuggestion`.
+ */
+async function enrichWithAI(
+  analyzed: AnalyzedError,
+  context?: string,
+): Promise<AnalyzedError> {
+  const config = getConfig();
+  if (!config.enableAISuggestions || !config.aiApiKey) return analyzed;
+
+  const aiResult = await fetchAISuggestions(
+    analyzed,
+    config.aiApiKey,
+    config.aiBaseUrl,
+    config.aiModel,
+    context,
+  );
+
+  return { ...analyzed, aiSuggestion: aiResult.suggestions };
+}
+
+// ─────────────────────────────────────────────
+// analyzeErrorAsync
+// ─────────────────────────────────────────────
+
+/**
+ * Async variant of `analyzeError`. Runs the full sync pipeline then calls the
+ * configured AI provider to populate `aiSuggestion` on the result.
+ *
+ * Falls back gracefully: if AI is disabled or the call fails, the result is
+ * identical to `analyzeError()`.
+ *
+ * Requires `aiApiKey` and `enableAISuggestions: true` in `configure()`.
+ *
+ * @example
+ * configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+ * const analyzed = await analyzeErrorAsync(err);
+ * console.log(analyzed.suggestions);   // pattern-based (always present)
+ * console.log(analyzed.aiSuggestion);  // AI-generated (when configured)
+ */
+export async function analyzeErrorAsync(
+  error: unknown,
+  options: AnalyzeOptions = {},
+): Promise<AnalyzedError> {
+  const analyzed = runPipeline(error, options);
+  return enrichWithAI(analyzed, options.context);
+}
+
+// ─────────────────────────────────────────────
+// wrapAsyncWithAI
+// ─────────────────────────────────────────────
+
+/**
+ * Like `wrapAsync` but enriches the error tuple with AI suggestions on failure.
+ * When AI is disabled the result is identical to `wrapAsync`.
+ *
+ * @example
+ * configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+ * const safeRead = wrapAsyncWithAI(fs.promises.readFile);
+ * const [err, content] = await safeRead('./config.json', 'utf-8');
+ * if (err) console.log(err.aiSuggestion);
+ */
+export function wrapAsyncWithAI<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => Promise<TReturn>,
+): WrappedAsyncFn<TArgs, TReturn> {
+  const fnSource = fn.toString().slice(0, 2000);
+  return async function wrappedWithAI(
+    ...args: TArgs
+  ): Promise<WrappedResult<TReturn>> {
+    try {
+      const result = await fn(...args);
+      return [null, result];
+    } catch (err) {
+      const analyzed = await analyzeErrorAsync(err, { context: fnSource });
+      return [analyzed, undefined];
+    }
+  };
+}
+
+// ─────────────────────────────────────────────
+// withErrorBoundaryAsync
+// ─────────────────────────────────────────────
+
+/**
+ * Like `withErrorBoundary` but guarantees the `onError` callback receives an
+ * `AnalyzedError` enriched with `aiSuggestion`. When AI is disabled the
+ * behaviour is identical to `withErrorBoundary`.
+ *
+ * @example
+ * const safeExport = withErrorBoundaryAsync(
+ *   (id: string) => generateReport(id),
+ *   (err) => alerting.send({ hint: err.aiSuggestion?.[0] }),
+ * );
+ * await safeExport('rpt_123');
+ */
+export function withErrorBoundaryAsync<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => Promise<TReturn>,
+  onError?: (error: AnalyzedError) => void,
+): (...args: TArgs) => Promise<TReturn | undefined> {
+  const fnSource = fn.toString().slice(0, 2000);
+  return async function boundaryWithAI(
+    ...args: TArgs
+  ): Promise<TReturn | undefined> {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      const analyzed = await analyzeErrorAsync(err, { context: fnSource });
+      if (onError) {
+        onError(analyzed);
+      } else {
+        process.stderr.write(formatError(analyzed, "compact") + "\n");
+      }
+      return undefined;
+    }
+  };
 }

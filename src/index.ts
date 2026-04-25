@@ -30,7 +30,9 @@ export {
   formatError,
   getErrorFingerprint,
   withErrorBoundary,
+  withErrorBoundaryAsync,
   wrapAsync,
+  wrapAsyncWithAI,
 } from "./core/analyzer.js";
 
 // ─────────────────────────────────────────────

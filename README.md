@@ -2,7 +2,7 @@
 
 # error-intelligence-layer
 
-**ChatGPT for your errors — but local and instant.**
+**630+ built-in error patterns. Optional AI suggestions from any provider — Groq, xAI, OpenRouter, or your own.**
 
 [![npm version](https://img.shields.io/npm/v/error-intelligence-layer.svg?style=flat-square)](https://www.npmjs.com/package/error-intelligence-layer)
 [![license](https://img.shields.io/npm/l/error-intelligence-layer.svg?style=flat-square)](./LICENSE)
@@ -50,24 +50,33 @@ try {
 3. [Architecture](#architecture)
 4. [Core API](#core-api)
    - [analyzeError](#analyzeerror)
+   - [analyzeErrorAsync](#analyzeerrorasync)
    - [createError](#createerror)
    - [wrapAsync](#wrapasync)
+   - [wrapAsyncWithAI](#wrapasyncwithai)
    - [withErrorBoundary](#witherrorboundary)
+   - [withErrorBoundaryAsync](#witherrorboundaryasync)
    - [formatError](#formaterror)
    - [getErrorFingerprint](#geterrorfingerprint)
-5. [Configuration](#configuration)
-6. [Types Reference](#types-reference)
-7. [Plugin System](#plugin-system)
+5. [AI Suggestions — Optional](#ai-suggestions--optional)
+   - [Why Groq?](#why-groq)
+   - [Getting a free Groq API key](#getting-a-free-groq-api-key)
+   - [Quick setup](#quick-setup)
+   - [Using with xAI Grok](#using-with-xai-grok)
+   - [Rate limits & fallback](#rate-limits--fallback)
+6. [Configuration](#configuration)
+7. [Types Reference](#types-reference)
+8. [Plugin System](#plugin-system)
    - [Built-in plugins](#built-in-plugins)
    - [Writing a custom plugin](#writing-a-custom-plugin)
-8. [Framework Adapters](#framework-adapters)
+9. [Framework Adapters](#framework-adapters)
    - [Express](#express)
    - [Fastify](#fastify)
    - [Next.js App Router](#nextjs-app-router)
    - [Next.js Pages Router](#nextjs-pages-router)
-9. [Output Formats](#output-formats)
-10. [Edge Cases & Guarantees](#edge-cases--guarantees)
-11. [Design Decisions](#design-decisions)
+10. [Output Formats](#output-formats)
+11. [Edge Cases & Guarantees](#edge-cases--guarantees)
+12. [Design Decisions](#design-decisions)
 
 ---
 
@@ -444,6 +453,306 @@ The fingerprint is a djb2 hash of `type + normalised-message + first-app-frame-f
 
 ---
 
+### `analyzeErrorAsync`
+
+Async variant of `analyzeError` that additionally calls an AI provider to populate `aiSuggestion` on the result. Requires `aiApiKey` + `enableAISuggestions: true` in `configure()`. Falls back gracefully — if AI is disabled or the call fails, the result is identical to `analyzeError()`.
+
+```ts
+import { analyzeErrorAsync, configure } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+async function analyzeErrorAsync(
+  error: unknown,
+  options?: AnalyzeOptions,
+): Promise<AnalyzedError>;
+```
+
+```ts
+try {
+  await fetchUserData(userId);
+} catch (err) {
+  const analyzed = await analyzeErrorAsync(err);
+  console.log(analyzed.suggestions); // ← always present (pattern-based)
+  console.log(analyzed.aiSuggestion); // ← AI-generated (when configured)
+}
+```
+
+> See [AI Suggestions — Optional](#ai-suggestions--optional) for full setup details.
+
+---
+
+### `wrapAsyncWithAI`
+
+Like `wrapAsync` but enriches the error with AI suggestions on failure. Requires AI to be configured; when disabled, behaves identically to `wrapAsync`.
+
+```ts
+import { wrapAsyncWithAI, configure } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+const safeRead = wrapAsyncWithAI(fs.promises.readFile);
+const [err, content] = await safeRead("./config.json", "utf-8");
+
+if (err) {
+  console.log(err.suggestions); // pattern-based (always present)
+  console.log(err.aiSuggestion); // AI-generated (when configured)
+}
+```
+
+---
+
+### `withErrorBoundaryAsync`
+
+Like `withErrorBoundary` but the `onError` callback receives an `AnalyzedError` enriched with `aiSuggestion`. When AI is disabled, behaves identically to `withErrorBoundary`.
+
+```ts
+import { withErrorBoundaryAsync, configure } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+const safeExport = withErrorBoundaryAsync(
+  (reportId: string) => generateReport(reportId),
+  async (err) => {
+    await alerting.send({
+      level: err.severity,
+      msg: err.message,
+      hint: err.aiSuggestion?.[0] ?? err.suggestions[0],
+    });
+  },
+);
+
+await safeExport("rpt_123"); // never throws
+```
+
+---
+
+## AI Suggestions — Optional
+
+On top of the 630+ built-in suggestion patterns, you can enable **AI-powered suggestions** from **any OpenAI-compatible provider** — the library is not tied to any single service.
+
+The default provider is **[Groq](https://console.groq.com)**: genuinely free, no credit card required, **14 400 requests per day** on the free tier. You can swap to xAI Grok, OpenRouter, or any self-hosted model by changing two config fields.
+
+Each user of your application supplies their own API key. No shared quota, no proxy.
+
+```json
+{
+  "suggestions": [
+    "Use optional chaining (?.) or add a null/undefined guard before accessing the property."
+  ],
+  "aiSuggestion": [
+    "Check that the object is initialised before accessing its properties.",
+    "Add a null guard: if (obj != null) { ... } or use obj?.name."
+  ]
+}
+```
+
+`suggestions` is always present. `aiSuggestion` is populated only when AI is configured.
+
+---
+
+### Why Groq?
+
+| Provider   | Free tier       | Credit card required | Notes                                      |
+| ---------- | --------------- | -------------------- | ------------------------------------------ |
+| **Groq** ✓ | 14 400 req/day  | No                   | Default. Fast inference, OpenAI-compatible |
+| xAI Grok   | Limited         | Yes                  | Point `aiBaseUrl` to `https://api.x.ai/v1` |
+| OpenRouter | Varies by model | No (some models)     | Point `aiBaseUrl` accordingly              |
+
+---
+
+### Getting a free Groq API key
+
+1. Go to **[console.groq.com](https://console.groq.com)**
+2. Sign up with GitHub, Google, or email — no credit card needed
+3. Click **API Keys** → **Create API Key**
+4. Copy the key (starts with `gsk_`)
+5. Store it in your environment: `GROQ_API_KEY=gsk_...`
+
+---
+
+### Quick setup
+
+```ts
+import { configure, analyzeErrorAsync } from "error-intelligence-layer";
+
+// One-time, at app startup
+configure({
+  aiApiKey: process.env.GROQ_API_KEY, // gsk_...
+  enableAISuggestions: true,
+  // aiBaseUrl: "https://api.groq.com/openai/v1",  ← default, can omit
+  // aiModel: "llama-3.3-70b-versatile",           ← default, can omit
+});
+
+// Then use analyzeErrorAsync anywhere you'd use analyzeError
+try {
+  await riskyOperation();
+} catch (err) {
+  const analyzed = await analyzeErrorAsync(err);
+
+  console.log("Pattern suggestions:", analyzed.suggestions);
+  // → ["Use optional chaining (?.) or add a null/undefined guard..."]
+
+  console.log("AI suggestions:", analyzed.aiSuggestion);
+  // → ["Verify the variable is defined before accessing its property.",
+  //    "Add defensive checks with optional chaining: obj?.property."]
+}
+```
+
+---
+
+### Passing function source for better AI suggestions
+
+Pass `context` in the options to give the AI more information. The AI uses this to give suggestions specific to your code, not just the error message.
+
+```ts
+// Pass the function source so AI can see what the code does
+async function fetchUser(id: string) {
+  const user = await db.users.findById(id);
+  return user.profile.name; // ← crashes here when user is null
+}
+
+try {
+  await fetchUser(userId);
+} catch (err) {
+  const analyzed = await analyzeErrorAsync(err, {
+    context: fetchUser.toString(), // ← send the source to AI
+  });
+
+  // AI now knows the function body and gives targeted suggestions:
+  // → "Check that db.users.findById() returns a user before accessing .profile"
+  // → "Add a null check: if (!user) throw new NotFoundError(...)"
+}
+```
+
+You can also pass a description instead of source code:
+
+```ts
+const analyzed = await analyzeErrorAsync(err, {
+  context:
+    "Parsing JWT token from the Authorization header in Express middleware",
+});
+```
+
+**`wrapAsyncWithAI` and `withErrorBoundaryAsync` automatically pass `fn.toString()` as context** — no extra work needed:
+
+```ts
+const safeFetchUser = wrapAsyncWithAI(fetchUser);
+// When fetchUser throws, the AI receives its source code automatically
+const [err, user] = await safeFetchUser(userId);
+if (err) {
+  console.log(err.aiSuggestion); // suggestions specific to fetchUser's code
+}
+```
+
+> Context is truncated to 2 000 characters before being sent to keep token usage within free-tier limits.
+
+---
+
+### Real-world usage patterns
+
+**Next.js API route:**
+
+```ts
+// app/api/users/[id]/route.ts
+import { analyzeErrorAsync, configure } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+export async function GET(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const user = await db.users.findById(params.id);
+    return Response.json(user);
+  } catch (err) {
+    const analyzed = await analyzeErrorAsync(err, {
+      context: `GET /api/users/${params.id} — fetching user from database`,
+    });
+    return Response.json(
+      {
+        error: analyzed.message,
+        suggestions: analyzed.aiSuggestion ?? analyzed.suggestions,
+      },
+      { status: 500 },
+    );
+  }
+}
+```
+
+**Structured logging pipeline (Pino / Winston):**
+
+```ts
+import { analyzeErrorAsync } from "error-intelligence-layer";
+import pino from "pino";
+
+const logger = pino();
+
+export async function logError(err: unknown, context?: string) {
+  const analyzed = await analyzeErrorAsync(err, { context });
+  logger.error(
+    {
+      type: analyzed.type,
+      severity: analyzed.severity,
+      fingerprint: analyzed.fingerprint,
+      suggestions: analyzed.suggestions,
+      aiSuggestion: analyzed.aiSuggestion,
+      request: analyzed.request,
+    },
+    analyzed.message,
+  );
+}
+```
+
+**Express middleware with AI:**
+
+```ts
+import { expressErrorHandler, configure } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+// enableAI: true tells the middleware to use analyzeErrorAsync
+app.use(expressErrorHandler({ enableAI: true }));
+```
+
+**Free Groq models** (as of 2026):
+
+| Model                     | Speed     | Best for                      |
+| ------------------------- | --------- | ----------------------------- |
+| `llama-3.3-70b-versatile` | Fast      | Default — best quality        |
+| `llama3-8b-8192`          | Very fast | High-throughput / low latency |
+| `gemma2-9b-it`            | Fast      | Alternative                   |
+
+---
+
+### Using with xAI Grok
+
+```ts
+configure({
+  aiApiKey: process.env.XAI_API_KEY, // xai-...
+  aiBaseUrl: "https://api.x.ai/v1", // override default
+  aiModel: "grok-3-mini",
+  enableAISuggestions: true,
+});
+```
+
+---
+
+### Rate limits & fallback
+
+When the daily quota is exhausted, `aiSuggestion` contains a human-readable message instead of suggestions — `suggestions` (pattern-based) is always unaffected.
+
+| Scenario              | `suggestions` | `aiSuggestion`                                                   |
+| --------------------- | ------------- | ---------------------------------------------------------------- |
+| AI disabled (default) | ✓ present     | `undefined`                                                      |
+| AI enabled, key valid | ✓ present     | AI-generated strings                                             |
+| Rate limit hit (429)  | ✓ present     | `"AI suggestions unavailable: daily rate limit reached…"`        |
+| Invalid key (401/403) | ✓ present     | `"AI suggestions unavailable: invalid or unauthorised API key…"` |
+| Network error         | ✓ present     | `"AI suggestions unavailable due to a network error: …"`         |
+
+---
+
 ## Configuration
 
 Global configuration applies to every `analyzeError()` call unless overridden per-call.
@@ -471,6 +780,12 @@ configure({
     "creditCard",
     "cvv",
   ],
+
+  // ── AI suggestions (optional) ──────────────────────────────
+  aiApiKey: process.env.GROQ_API_KEY, // gsk_... from console.groq.com
+  enableAISuggestions: true, // default: false
+  aiBaseUrl: "https://api.groq.com/openai/v1", // default — can omit
+  aiModel: "llama-3.3-70b-versatile", // default — can omit
 });
 
 // Read current config (frozen snapshot)
@@ -491,6 +806,7 @@ All types are exported and fully documented.
 
 ```ts
 import type {
+  AIResult, // result shape from the AI layer
   AnalyzedError, // main output type
   AnalyzeOptions, // options for analyzeError()
   CreateErrorOptions, // options for createError()
@@ -504,7 +820,7 @@ import type {
   RequestContext, // HTTP request metadata
   Severity, // "low" | "medium" | "high" | "critical"
   StackFrame, // single parsed stack frame
-  WrappedAsyncFn, // return type of wrapAsync
+  WrappedAsyncFn, // return type of wrapAsync / wrapAsyncWithAI
   WrappedResult, // [AnalyzedError, undefined] | [null, T]
 } from "error-intelligence-layer";
 ```
@@ -521,7 +837,8 @@ interface AnalyzedError {
   fingerprint: string; // stable 8-char hex dedup hash
   rootCause: AnalyzedError | null; // deepest cause (null if no chain)
   causeChain: AnalyzedError[]; // [immediate cause → root cause]
-  suggestions: string[]; // human-readable fix hints
+  suggestions: string[]; // human-readable fix hints (always present)
+  aiSuggestion?: string[]; // AI-generated hints (when configured)
   environment: EnvironmentInfo | null;
   request: RequestContext | null; // sanitised (secrets redacted)
   timestamp: string; // ISO 8601 — time analyzeError() was called

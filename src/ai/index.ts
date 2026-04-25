@@ -1,24 +1,23 @@
 import type { AnalyzedError, AIResult } from "../types/index.js";
 
 // ─────────────────────────────────────────────
-// xAI Grok API integration
+// AI suggestion layer — provider-agnostic
+// Supports any OpenAI-compatible chat-completions API:
+//   Groq (default, free tier), xAI Grok, OpenRouter, etc.
 // ─────────────────────────────────────────────
 
-const GROK_API_URL = "https://api.x.ai/v1/chat/completions";
-
 const RATE_LIMIT_MESSAGE =
-  "AI suggestions unavailable: xAI Grok daily rate limit reached. " +
+  "AI suggestions unavailable: daily rate limit reached. " +
   "Your pattern-based suggestions above are still accurate. " +
-  "The AI quota resets every 24 hours — try again tomorrow.";
-
-const NOT_CONFIGURED_MESSAGE =
-  "AI suggestions not configured. Pass xaiApiKey and set enableAISuggestions: true in configure().";
+  "The quota resets every 24 hours — try again tomorrow.";
 
 /**
- * Builds a concise prompt for Grok so the response is fast and focused.
- * Keeps the prompt short to minimise token usage (free-tier friendly).
+ * Builds a concise prompt so the response is fast and focused.
+ * Short prompt = fewer tokens = stays well within free-tier limits.
+ * When `context` is provided (e.g. function source or description), it is
+ * appended so the model can give more targeted suggestions.
  */
-function buildPrompt(error: AnalyzedError): string {
+function buildPrompt(error: AnalyzedError, context?: string): string {
   const lines: string[] = [
     `Error type: ${error.type}`,
     `Message: ${error.message}`,
@@ -38,45 +37,44 @@ function buildPrompt(error: AnalyzedError): string {
   }
 
   if (error.rootCause && error.rootCause.message !== error.message) {
-    lines.push(`Root cause: ${error.rootCause.type}: ${error.rootCause.message}`);
+    lines.push(
+      `Root cause: ${error.rootCause.type}: ${error.rootCause.message}`,
+    );
   }
 
-  return (
+  let prompt =
     "You are a senior Node.js/TypeScript engineer. " +
     "Given the error below, provide 2–3 concise, actionable fix suggestions. " +
     "Each suggestion must be a single sentence. " +
     "Reply with a JSON array of strings ONLY — no markdown, no explanation outside the array.\n\n" +
-    lines.join("\n")
-  );
+    lines.join("\n");
+
+  if (context && context.trim().length > 0) {
+    // Truncate to 2000 chars to stay well within free-tier token limits
+    const trimmed = context.trim().slice(0, 2000);
+    prompt += `\n\nAdditional context (function source or description):\n${trimmed}`;
+  }
+
+  return prompt;
 }
 
 /**
- * Parses the Grok response content into an array of suggestion strings.
- * Handles edge cases where the model returns extra text around the JSON array.
+ * Parses the model response content into an array of suggestion strings.
+ * Handles cases where the model wraps the array in extra text or markdown.
  */
 function parseSuggestions(content: string): string[] {
-  // Extract the first JSON array found in the response
   const match = content.match(/\[[\s\S]*?\]/);
-  if (!match) {
-    // Fallback: split by newline and treat each non-empty line as a suggestion
-    return content
-      .split("\n")
-      .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
-      .filter((l) => l.length > 10);
-  }
-
-  try {
-    const parsed = JSON.parse(match[0]) as unknown;
-    if (
-      Array.isArray(parsed) &&
-      parsed.every((s) => typeof s === "string")
-    ) {
-      return (parsed as string[]).filter((s) => s.trim().length > 0);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]) as unknown;
+      if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) {
+        return (parsed as string[]).filter((s) => s.trim().length > 0);
+      }
+    } catch {
+      // fall through
     }
-  } catch {
-    // Fall through to line-split fallback
   }
-
+  // Fallback: treat each non-empty line as a suggestion
   return content
     .split("\n")
     .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
@@ -84,32 +82,27 @@ function parseSuggestions(content: string): string[] {
 }
 
 /**
- * Calls the xAI Grok API to generate AI-powered fix suggestions.
+ * Calls an OpenAI-compatible chat-completions endpoint to generate fix suggestions.
  *
- * @param error   - The fully analysed error (sync pipeline output).
- * @param apiKey  - The user's xAI API key.
- * @param model   - Grok model name (default: "grok-3-mini").
- * @returns       AIResult with suggestions or rate-limit metadata.
+ * @param error    - The fully analysed error (sync pipeline output).
+ * @param apiKey   - The user's API key for the chosen provider.
+ * @param baseUrl  - Base URL of the provider (no trailing slash, no /chat/completions).
+ * @param model    - Model name to use.
+ * @param context  - Optional extra context: function source, description, etc.
  */
 export async function fetchAISuggestions(
   error: AnalyzedError,
   apiKey: string,
-  model = "grok-3-mini",
+  baseUrl: string,
+  model: string,
+  context?: string,
 ): Promise<AIResult> {
-  if (!apiKey) {
-    return {
-      ok: false,
-      rateLimited: false,
-      suggestions: [NOT_CONFIGURED_MESSAGE],
-      errorMessage: "No API key provided.",
-    };
-  }
-
-  const prompt = buildPrompt(error);
+  const prompt = buildPrompt(error, context);
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 
   let response: Response;
   try {
-    response = await fetch(GROK_API_URL, {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -128,18 +121,16 @@ export async function fetchAISuggestions(
     return {
       ok: false,
       rateLimited: false,
-      suggestions: [`AI suggestions unavailable due to a network error: ${msg}`],
+      suggestions: [
+        `AI suggestions unavailable due to a network error: ${msg}`,
+      ],
       errorMessage: msg,
     };
   }
 
-  // Rate limit (429) or quota exceeded
+  // Rate limit / quota exceeded
   if (response.status === 429) {
-    return {
-      ok: false,
-      rateLimited: true,
-      suggestions: [RATE_LIMIT_MESSAGE],
-    };
+    return { ok: false, rateLimited: true, suggestions: [RATE_LIMIT_MESSAGE] };
   }
 
   // Auth errors
@@ -148,20 +139,22 @@ export async function fetchAISuggestions(
       ok: false,
       rateLimited: false,
       suggestions: [
-        "AI suggestions unavailable: invalid or unauthorised xAI API key. " +
-          "Check that xaiApiKey in configure() matches your key at https://console.x.ai",
+        "AI suggestions unavailable: invalid or unauthorised API key. " +
+          "Check that aiApiKey in configure() is correct.",
       ],
       errorMessage: `HTTP ${response.status}`,
     };
   }
 
   if (!response.ok) {
-    const errorMessage = `xAI Grok API returned HTTP ${response.status}`;
+    const errorText = await response.text().catch(() => "");
     return {
       ok: false,
       rateLimited: false,
-      suggestions: [`AI suggestions unavailable: ${errorMessage}`],
-      errorMessage,
+      suggestions: [
+        `AI suggestions unavailable: provider returned HTTP ${response.status}`,
+      ],
+      errorMessage: errorText || `HTTP ${response.status}`,
     };
   }
 
@@ -172,12 +165,13 @@ export async function fetchAISuggestions(
     return {
       ok: false,
       rateLimited: false,
-      suggestions: ["AI suggestions unavailable: failed to parse API response."],
-      errorMessage: "JSON parse error on response body",
+      suggestions: [
+        "AI suggestions unavailable: invalid JSON response from provider.",
+      ],
+      errorMessage: "JSON parse error",
     };
   }
 
-  // Extract content from OpenAI-compatible response shape
   const content =
     (body as { choices?: { message?: { content?: string } }[] })?.choices?.[0]
       ?.message?.content ?? "";
@@ -186,18 +180,16 @@ export async function fetchAISuggestions(
     return {
       ok: false,
       rateLimited: false,
-      suggestions: ["AI suggestions unavailable: empty response from Grok API."],
+      suggestions: [
+        "AI suggestions unavailable: empty response from provider.",
+      ],
       errorMessage: "Empty content",
     };
   }
 
-  const suggestions = parseSuggestions(content);
-
   return {
     ok: true,
     rateLimited: false,
-    suggestions: suggestions.length > 0
-      ? suggestions
-      : ["AI returned a response but no parseable suggestions were found."],
+    suggestions: parseSuggestions(content),
   };
 }

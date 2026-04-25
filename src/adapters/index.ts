@@ -4,7 +4,11 @@ import type {
   FormatType,
   RequestContext,
 } from "../types/index.js";
-import { analyzeError, formatError } from "../core/analyzer.js";
+import {
+  analyzeError,
+  analyzeErrorAsync,
+  formatError,
+} from "../core/analyzer.js";
 import { getConfig } from "../core/config.js";
 
 // ─────────────────────────────────────────────
@@ -16,6 +20,12 @@ interface AdapterOptions {
   format?: FormatType;
   /** Include process/env info in the analyzed error. Default: true. */
   includeEnv?: boolean;
+  /**
+   * When true (and `aiApiKey` + `enableAISuggestions` are set via `configure()`),
+   * the adapter uses `analyzeErrorAsync` so `onError` receives an `AnalyzedError`
+   * with `aiSuggestion` populated. Defaults to the global `enableAISuggestions`.
+   */
+  enableAI?: boolean;
   /**
    * Optional side-effect hook called after analysis.
    * Use for external logging, alerting, etc.
@@ -57,6 +67,7 @@ function resolveStatusCode(raw: unknown): number {
 export function expressErrorHandler(options: AdapterOptions = {}) {
   const fmt = options.format ?? getConfig().defaultFormat;
   const includeEnv = options.includeEnv ?? getConfig().includeEnv;
+  const enableAI = options.enableAI ?? getConfig().enableAISuggestions;
 
   // Express error middleware has signature (err, req, res, next)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,12 +83,8 @@ export function expressErrorHandler(options: AdapterOptions = {}) {
       includeEnv,
     };
 
-    const analyzed = analyzeError(err, analyzeOpts);
-    options.onError?.(analyzed, err);
-
     const statusCode = resolveStatusCode(err);
-    const body = formatError(analyzed, fmt);
-
+    const contentType = fmt === "json" ? "application/json" : "text/plain";
     const resSend = res as unknown as {
       status: (code: number) => {
         send: (body: string) => void;
@@ -86,8 +93,17 @@ export function expressErrorHandler(options: AdapterOptions = {}) {
       set: (k: string, v: string) => void;
     };
 
-    const contentType = fmt === "json" ? "application/json" : "text/plain";
-    resSend.status(statusCode).set("Content-Type", contentType).send(body);
+    const send = (analyzed: AnalyzedError) => {
+      options.onError?.(analyzed, err);
+      const body = formatError(analyzed, fmt);
+      resSend.status(statusCode).set("Content-Type", contentType).send(body);
+    };
+
+    if (enableAI) {
+      void analyzeErrorAsync(err, analyzeOpts).then(send);
+    } else {
+      send(analyzeError(err, analyzeOpts));
+    }
   };
 }
 
@@ -110,8 +126,9 @@ export function fastifyErrorPlugin(
 ): void {
   const fmt = options.format ?? getConfig().defaultFormat;
   const includeEnv = options.includeEnv ?? getConfig().includeEnv;
+  const enableAI = options.enableAI ?? getConfig().enableAISuggestions;
 
-  fastify["setErrorHandler"](function (
+  fastify["setErrorHandler"](async function (
     err: unknown,
     request: Record<string, unknown>,
     reply: Record<string, unknown>,
@@ -121,7 +138,10 @@ export function fastifyErrorPlugin(
       includeEnv,
     };
 
-    const analyzed = analyzeError(err, analyzeOpts);
+    const analyzed = enableAI
+      ? await analyzeErrorAsync(err, analyzeOpts)
+      : analyzeError(err, analyzeOpts);
+
     options.onError?.(analyzed, err);
 
     const statusCode = resolveStatusCode(err);
@@ -165,6 +185,7 @@ export function withNextErrorHandler(
 ): RouteHandler {
   const fmt = options.format ?? "json";
   const includeEnv = options.includeEnv ?? getConfig().includeEnv;
+  const enableAI = options.enableAI ?? getConfig().enableAISuggestions;
 
   return async function eilNextHandler(
     req: NextRequest,
@@ -174,15 +195,13 @@ export function withNextErrorHandler(
       return await handler(req, ctx);
     } catch (err) {
       const analyzeOpts: AnalyzeOptions = {
-        request: {
-          method: req.method,
-          url: req.url,
-          headers: req.headers,
-        },
+        request: { method: req.method, url: req.url, headers: req.headers },
         includeEnv,
       };
 
-      const analyzed = analyzeError(err, analyzeOpts);
+      const analyzed = enableAI
+        ? await analyzeErrorAsync(err, analyzeOpts)
+        : analyzeError(err, analyzeOpts);
       options.onError?.(analyzed, err);
 
       const body = formatError(analyzed, fmt);
@@ -248,6 +267,7 @@ export function withNextApiErrorHandler(
   options: AdapterOptions = {},
 ): NextApiHandler {
   const includeEnv = options.includeEnv ?? getConfig().includeEnv;
+  const enableAI = options.enableAI ?? getConfig().enableAISuggestions;
 
   return async function eilNextApiHandler(
     req: NextApiRequest,
@@ -267,7 +287,9 @@ export function withNextApiErrorHandler(
         includeEnv,
       };
 
-      const analyzed = analyzeError(err, analyzeOpts);
+      const analyzed = enableAI
+        ? await analyzeErrorAsync(err, analyzeOpts)
+        : analyzeError(err, analyzeOpts);
       options.onError?.(analyzed, err);
 
       const statusCode = resolveStatusCode(err);

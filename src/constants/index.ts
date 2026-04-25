@@ -26,7 +26,8 @@ export const DEFAULT_CONFIG: Readonly<EILConfig> = Object.freeze({
   maxCauseDepth: 10,
   enablePlugins: true,
   enableAISuggestions: false,
-  grokModel: "grok-3-mini",
+  aiBaseUrl: "https://api.groq.com/openai/v1",
+  aiModel: "llama-3.3-70b-versatile",
 });
 
 // ─────────────────────────────────────────────
