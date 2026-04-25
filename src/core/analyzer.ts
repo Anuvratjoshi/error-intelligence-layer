@@ -198,15 +198,28 @@ async function enrichWithAI(
   const config = getConfig();
   if (!config.enableAISuggestions || !config.aiApiKey) return analyzed;
 
+  // aiFixSuggested is a dev-only field: never populate in production.
+  // The NODE_ENV check is a hard guard that cannot be overridden by config.
+  const isProduction =
+    typeof process !== "undefined" && process.env.NODE_ENV === "production";
+  const includeFix = config.enableAIFix && !isProduction;
+
   const aiResult = await fetchAISuggestions(
     analyzed,
     config.aiApiKey,
     config.aiBaseUrl,
     config.aiModel,
     context,
+    includeFix,
   );
 
-  return { ...analyzed, aiSuggestion: aiResult.suggestions };
+  return {
+    ...analyzed,
+    aiSuggestion: aiResult.suggestions,
+    ...(includeFix && aiResult.fix != null
+      ? { aiFixSuggested: aiResult.fix }
+      : {}),
+  };
 }
 
 // ─────────────────────────────────────────────

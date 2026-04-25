@@ -62,6 +62,7 @@ try {
    - [Why Groq?](#why-groq)
    - [Getting a free Groq API key](#getting-a-free-groq-api-key)
    - [Quick setup](#quick-setup)
+   - [AI Fix Suggested — corrected code (dev only)](#ai-fix-suggested--corrected-code-dev-only)
    - [Using with xAI Grok](#using-with-xai-grok)
    - [Rate limits & fallback](#rate-limits--fallback)
 6. [Configuration](#configuration)
@@ -541,13 +542,14 @@ Each user of your application supplies their own API key. No shared quota, no pr
     "Use optional chaining (?.) or add a null/undefined guard before accessing the property."
   ],
   "aiSuggestion": [
-    "Check that the object is initialised before accessing its properties.",
-    "Add a null guard: if (obj != null) { ... } or use obj?.name."
-  ]
+    "The error occurs because data.user may be undefined.",
+    "The fetch response might not contain the expected JSON structure."
+  ],
+  "aiFixSuggested": "async function fetchUserProfile(userId) {\n  const response = await fetch(...);\n  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`); // added\n  const data = await response.json();\n  return data?.user?.profile?.name; // optional chaining added\n}"
 }
 ```
 
-`suggestions` is always present. `aiSuggestion` is populated only when AI is configured.
+`suggestions` is always present. `aiSuggestion` is populated when AI is configured. `aiFixSuggested` is populated in **development only** (never in `NODE_ENV=production`).
 
 ---
 
@@ -646,6 +648,89 @@ if (err) {
 ```
 
 > Context is truncated to 2 000 characters before being sent to keep token usage within free-tier limits.
+
+---
+
+### AI Fix Suggested — corrected code (dev only)
+
+`aiFixSuggested` goes one step further than `aiSuggestion`. While `aiSuggestion` gives you short hints explaining _why_ an error occurred, `aiFixSuggested` gives you the **actual corrected source code** — or a precise step-by-step plan when no source is available.
+
+**It is a development-only field.** It is never populated when `NODE_ENV === "production"`, regardless of any config setting. This is a hard guard — not bypassable.
+
+#### With function source (recommended)
+
+When you pass `context: fn.toString()`, the AI receives the full function body and outputs the **fixed version of your exact code**, with inline comments on each changed line:
+
+```ts
+import { configure, analyzeErrorAsync } from "error-intelligence-layer";
+
+configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
+
+async function fetchUserProfile(userId: string) {
+  const response = await fetch(`https://api.example.com/users/${userId}`);
+  const data = await response.json();
+  return data.user.profile.name; // ← crashes when user or profile is null
+}
+
+try {
+  await fetchUserProfile(userId);
+} catch (err) {
+  const analyzed = await analyzeErrorAsync(err, {
+    context: fetchUserProfile.toString(),
+  });
+
+  console.log(analyzed.aiSuggestion);
+  // → ["The error occurs because data.user may be undefined",
+  //    "The fetch response might not contain the expected JSON structure"]
+
+  console.log(analyzed.aiFixSuggested);
+  // → async function fetchUserProfile(userId) {
+  //     const response = await fetch(`https://api.example.com/users/${userId}`);
+  //     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`); // added error check
+  //     const data = await response.json();
+  //     return data?.user?.profile?.name; // added optional chaining
+  //   }
+}
+```
+
+The fix is **code you can paste directly** — it targets the exact property chain, variable names, and structure of your function.
+
+#### Without function source
+
+When no `context` is passed, `aiFixSuggested` falls back to a numbered plan specific to the error type, message, and stack frame:
+
+```ts
+const analyzed = await analyzeErrorAsync(
+  new TypeError("Cannot read properties of undefined (reading 'profile')"),
+);
+
+console.log(analyzed.aiFixSuggested);
+// → 1. Check that the variable holding the object is not null/undefined before accessing .profile
+// → 2. Add a guard: if (data && data.user) { ... } or use optional chaining data?.user?.profile
+// → 3. Wrap the access in a try/catch block to handle unexpected API shapes
+```
+
+#### Production guard
+
+```ts
+// In production — aiFixSuggested is always undefined, regardless of enableAIFix
+process.env.NODE_ENV = "production";
+const analyzed = await analyzeErrorAsync(err);
+console.log(analyzed.aiFixSuggested); // → undefined  ✓
+console.log(analyzed.aiSuggestion); // → still populated  ✓
+```
+
+#### Disabling the fix field (saves tokens)
+
+```ts
+configure({
+  aiApiKey: process.env.GROQ_API_KEY,
+  enableAISuggestions: true,
+  enableAIFix: false, // disable aiFixSuggested even in development
+});
+```
+
+> **Token budget:** when `aiFixSuggested` is requested, `max_tokens` is raised from 256 to 512. This is still well within Groq's free tier (6 000 tokens/min). `wrapAsyncWithAI` and `withErrorBoundaryAsync` automatically pass `fn.toString()` as context, so the fixed code they produce is always targeted at the exact function that threw.
 
 ---
 
@@ -786,6 +871,7 @@ configure({
   enableAISuggestions: true, // default: false
   aiBaseUrl: "https://api.groq.com/openai/v1", // default — can omit
   aiModel: "llama-3.3-70b-versatile", // default — can omit
+  enableAIFix: true, // default: true — set false to skip aiFixSuggested
 });
 
 // Read current config (frozen snapshot)
@@ -838,7 +924,9 @@ interface AnalyzedError {
   rootCause: AnalyzedError | null; // deepest cause (null if no chain)
   causeChain: AnalyzedError[]; // [immediate cause → root cause]
   suggestions: string[]; // human-readable fix hints (always present)
-  aiSuggestion?: string[]; // AI-generated hints (when configured)
+  aiSuggestion?: string[]; // AI-generated short hints (when configured)
+  aiFixSuggested?: string; // AI corrected code or step-by-step plan — DEV ONLY
+  // Never present when NODE_ENV === "production"
   environment: EnvironmentInfo | null;
   request: RequestContext | null; // sanitised (secrets redacted)
   timestamp: string; // ISO 8601 — time analyzeError() was called

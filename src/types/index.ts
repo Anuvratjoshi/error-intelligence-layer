@@ -143,6 +143,14 @@ export interface AnalyzedError {
    * Undefined when AI is disabled or unconfigured.
    */
   aiSuggestion?: string[];
+  /**
+   * AI-generated step-by-step fix plan (up to 10 numbered steps).
+   *
+   * **Development only** — never populated when `NODE_ENV === "production"`
+   * or when `enableAIFix` is `false` in `configure()`.
+   * Requires `aiApiKey` and `enableAISuggestions: true`.
+   */
+  aiFixSuggested?: string;
   /** Runtime environment snapshot (null when includeEnv: false). */
   environment: EnvironmentInfo | null;
   /** HTTP request context (null when not provided). */
@@ -261,6 +269,18 @@ export interface EILConfig {
    * Defaults to false.
    */
   enableAISuggestions: boolean;
+
+  /**
+   * Enable AI-generated step-by-step fix plans (`aiFixSuggested` field).
+   *
+   * Even when `true`, the field is **never populated in production**
+   * (`NODE_ENV === "production"` acts as an unconditional hard guard).
+   * Requires `enableAISuggestions: true` and a valid `aiApiKey`.
+   *
+   * Defaults to `true` — disable explicitly if you don't want the extra
+   * tokens consumed on the free tier during development.
+   */
+  enableAIFix: boolean;
 }
 
 // ─────────────────────────────────────────────
@@ -271,6 +291,11 @@ export interface EILConfig {
 export interface AIResult {
   /** AI-generated suggestion strings. */
   suggestions: string[];
+  /**
+   * AI-generated step-by-step fix string (up to 10 numbered steps).
+   * Only present when `includeFix` was true in the AI call.
+   */
+  fix?: string;
   /** True when the API returned a rate-limit or quota response. */
   rateLimited: boolean;
   /** True when the AI call succeeded. */

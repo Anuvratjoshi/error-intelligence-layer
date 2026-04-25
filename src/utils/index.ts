@@ -67,8 +67,14 @@ export function redactSensitiveKeys(
     );
   }
   if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
+    // Use null-prototype object to prevent prototype pollution
+    // (guards against __proto__, constructor, toString as keys)
+    const result = Object.create(null) as Record<string, unknown>;
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      // Skip keys that can pollute the prototype chain
+      if (k === "__proto__" || k === "constructor" || k === "prototype") {
+        continue;
+      }
       if (sensitiveKeys.some((s) => s.toLowerCase() === k.toLowerCase())) {
         result[k] = REDACTED_VALUE;
       } else {
