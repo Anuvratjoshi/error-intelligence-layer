@@ -47,6 +47,14 @@
   ],
   "author": "Anuvrat Joshi <joshianuvrat@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anuvratjoshi/error-intelligence-layer.git"
+  },
+  "homepage": "https://github.com/Anuvratjoshi/error-intelligence-layer#readme",
+  "bugs": {
+    "url": "https://github.com/Anuvratjoshi/error-intelligence-layer/issues"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^1.0.0",
