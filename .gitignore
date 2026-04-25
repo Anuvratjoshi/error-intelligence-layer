@@ -1,0 +1,86 @@
+# ─── Build output ────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+
+# ─── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# ─── Test & coverage ──────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ─── GitHub copilot instructions ───────────────────────────────────────────────────────
+.github/
+
+# ─── TypeScript ───────────────────────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Environment & secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.test
+.envrc
+
+# ─── OS artifacts ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ─── Editors & IDEs ───────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# ─── Package manager lock files (keep only one) ───────────────────────────────
+# Uncomment the ones you are NOT using so only your chosen lock file is tracked
+# yarn.lock
+# pnpm-lock.yaml
+
+# ─── Temporary & misc ─────────────────────────────────────────────────────────
+tmp/
+temp/
+.tmp/
+.cache/
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ─── Publishing artefacts ─────────────────────────────────────────────────────
+*.tgz
+*.tar.gz
+
