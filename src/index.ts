@@ -2,6 +2,7 @@
 // Public types (tree-shaken from JS bundles)
 // ─────────────────────────────────────────────
 export type {
+  AIResult,
   AnalyzedError,
   AnalyzeOptions,
   CreateErrorOptions,
@@ -24,6 +25,7 @@ export type {
 // ─────────────────────────────────────────────
 export {
   analyzeError,
+  analyzeErrorAsync,
   createError,
   formatError,
   getErrorFingerprint,

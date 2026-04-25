@@ -25,6 +25,8 @@ export const DEFAULT_CONFIG: Readonly<EILConfig> = Object.freeze({
   maxMetadataValueSize: 2048,
   maxCauseDepth: 10,
   enablePlugins: true,
+  enableAISuggestions: false,
+  grokModel: "grok-3-mini",
 });
 
 // ─────────────────────────────────────────────

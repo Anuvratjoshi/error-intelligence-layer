@@ -13,6 +13,7 @@ import { buildFingerprint } from "../layers/enrichment/index.js";
 import { normalizeError } from "../layers/normalization/index.js";
 import { parseStack } from "../layers/parsing/index.js";
 import { format } from "../layers/formatting/index.js";
+import { fetchAISuggestions } from "../ai/index.js";
 
 // ─────────────────────────────────────────────
 // analyzeError
@@ -27,6 +28,49 @@ export function analyzeError(
   options: AnalyzeOptions = {},
 ): AnalyzedError {
   return runPipeline(error, options);
+}
+
+// ─────────────────────────────────────────────
+// analyzeErrorAsync
+// ─────────────────────────────────────────────
+
+/**
+ * Async variant of `analyzeError` that additionally calls the xAI Grok API
+ * to populate the `aiSuggestion` field on the result.
+ *
+ * Requires `xaiApiKey` and `enableAISuggestions: true` in `configure()`.
+ * Falls back gracefully — if AI is disabled or the API call fails, the result
+ * is identical to `analyzeError()` plus an informational `aiSuggestion` entry.
+ *
+ * @example
+ * ```ts
+ * import { configure, analyzeErrorAsync } from "error-intelligence-layer";
+ *
+ * configure({ xaiApiKey: process.env.XAI_API_KEY, enableAISuggestions: true });
+ *
+ * const analyzed = await analyzeErrorAsync(error);
+ * console.log(analyzed.suggestions);    // pattern-based, always present
+ * console.log(analyzed.aiSuggestion);   // AI-generated, when configured
+ * ```
+ */
+export async function analyzeErrorAsync(
+  error: unknown,
+  options: AnalyzeOptions = {},
+): Promise<AnalyzedError> {
+  const analyzed = runPipeline(error, options);
+  const config = getConfig();
+
+  if (!config.enableAISuggestions || !config.xaiApiKey) {
+    return analyzed;
+  }
+
+  const aiResult = await fetchAISuggestions(
+    analyzed,
+    config.xaiApiKey,
+    config.grokModel,
+  );
+
+  return { ...analyzed, aiSuggestion: aiResult.suggestions };
 }
 
 // ─────────────────────────────────────────────

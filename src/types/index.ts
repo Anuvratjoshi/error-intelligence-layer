@@ -137,6 +137,12 @@ export interface AnalyzedError {
   causeChain: AnalyzedError[];
   /** Human-readable fix suggestions produced by the intelligence layer. */
   suggestions: string[];
+  /**
+   * AI-generated suggestions from the xAI Grok API.
+   * Populated only when `xaiApiKey` is configured and `enableAISuggestions` is true.
+   * Contains a rate-limit message when the daily quota is exhausted.
+   */
+  aiSuggestion?: string[];
   /** Runtime environment snapshot (null when includeEnv: false). */
   environment: EnvironmentInfo | null;
   /** HTTP request context (null when not provided). */
@@ -198,6 +204,39 @@ export interface EILConfig {
   maxCauseDepth: number;
   /** Whether registered plugins are executed. */
   enablePlugins: boolean;
+  /**
+   * Optional xAI (Grok) API key.
+   * When set, `analyzeErrorAsync()` will call the Grok API to generate
+   * AI-powered suggestions and populate `aiSuggestion` on the result.
+   * Each user supplies their own key — obtain one at https://console.x.ai
+   */
+  xaiApiKey?: string;
+  /**
+   * Enable AI suggestions via the Grok API.
+   * Requires `xaiApiKey` to be set. Defaults to false.
+   */
+  enableAISuggestions: boolean;
+  /**
+   * Grok model to use for AI suggestions.
+   * Defaults to "grok-3-mini" (fast and free-tier eligible).
+   */
+  grokModel: string;
+}
+
+// ─────────────────────────────────────────────
+// AI suggestion result
+// ─────────────────────────────────────────────
+
+/** Internal result shape returned by the AI layer. */
+export interface AIResult {
+  /** AI-generated suggestion strings. */
+  suggestions: string[];
+  /** True when the API returned a rate-limit or quota response. */
+  rateLimited: boolean;
+  /** True when the AI call succeeded. */
+  ok: boolean;
+  /** Error message if the call failed for a non-rate-limit reason. */
+  errorMessage?: string;
 }
 
 // ─────────────────────────────────────────────
