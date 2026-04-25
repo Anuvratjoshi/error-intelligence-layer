@@ -1,6 +1,6 @@
 {
   "name": "error-intelligence-layer",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Transform any thrown value into a structured error object with severity, root-cause chain, fix suggestions, stack parsing, request sanitisation, and framework adapters. Zero dependencies.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
