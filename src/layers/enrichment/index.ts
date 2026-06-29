@@ -25,8 +25,15 @@ export function captureEnvironment(
   includeEnv: boolean,
 ): EnvironmentInfo | null {
   if (!includeEnv) return null;
-  // Guard: process may not exist in all runtimes
-  if (typeof process === "undefined") return null;
+  // Guard: process may not exist (edge runtimes) or may be the webpack/Next.js
+  // browser polyfill that provides process.env but NOT memoryUsage/uptime/pid.
+  if (
+    typeof process === "undefined" ||
+    typeof process.memoryUsage !== "function" ||
+    typeof process.uptime !== "function"
+  ) {
+    return null;
+  }
 
   return {
     nodeVersion: process.version,

@@ -132,8 +132,13 @@ export function withErrorBoundary<TArgs extends unknown[], TReturn>(
           const analyzed = analyzeError(err);
           if (onError) {
             onError(analyzed);
-          } else {
+          } else if (
+            typeof process !== "undefined" &&
+            typeof process.stderr?.write === "function"
+          ) {
             process.stderr.write(formatError(analyzed, "compact") + "\n");
+          } else {
+            console.error(formatError(analyzed, "compact"));
           }
           return undefined;
         }) as Promise<TReturn>;
@@ -144,8 +149,13 @@ export function withErrorBoundary<TArgs extends unknown[], TReturn>(
       const analyzed = analyzeError(err);
       if (onError) {
         onError(analyzed);
-      } else {
+      } else if (
+        typeof process !== "undefined" &&
+        typeof process.stderr?.write === "function"
+      ) {
         process.stderr.write(formatError(analyzed, "compact") + "\n");
+      } else {
+        console.error(formatError(analyzed, "compact"));
       }
       return undefined;
     }
@@ -310,8 +320,13 @@ export function withErrorBoundaryAsync<TArgs extends unknown[], TReturn>(
       const analyzed = await analyzeErrorAsync(err, { context: fnSource });
       if (onError) {
         onError(analyzed);
-      } else {
+      } else if (
+        typeof process !== "undefined" &&
+        typeof process.stderr?.write === "function"
+      ) {
         process.stderr.write(formatError(analyzed, "compact") + "\n");
+      } else {
+        console.error(formatError(analyzed, "compact"));
       }
       return undefined;
     }
