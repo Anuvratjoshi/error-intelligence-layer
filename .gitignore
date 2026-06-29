@@ -83,4 +83,5 @@ temp/
 # ─── Publishing artefacts ─────────────────────────────────────────────────────
 *.tgz
 *.tar.gz
+PUBLISHING.md
 
