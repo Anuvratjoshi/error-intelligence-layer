@@ -532,7 +532,7 @@ await safeExport("rpt_123"); // never throws
 
 On top of the 630+ built-in suggestion patterns, you can enable **AI-powered suggestions** from **any OpenAI-compatible provider** — the library is not tied to any single service.
 
-The default provider is **[Groq](https://console.groq.com)**: genuinely free, no credit card required, **14 400 requests per day** on the free tier. You can swap to xAI Grok, OpenRouter, or any self-hosted model by changing two config fields.
+The default provider is **[Groq](https://console.groq.com)** with the free-tier `openai/gpt-oss-120b` model: no credit card required, OpenAI-compatible, and a strong replacement for the discontinued Llama default. You can swap to xAI Grok, OpenRouter, or any self-hosted model by changing two config fields.
 
 Each user of your application supplies their own API key. No shared quota, no proxy.
 
@@ -555,11 +555,11 @@ Each user of your application supplies their own API key. No shared quota, no pr
 
 ### Why Groq?
 
-| Provider   | Free tier       | Credit card required | Notes                                      |
-| ---------- | --------------- | -------------------- | ------------------------------------------ |
-| **Groq** ✓ | 14 400 req/day  | No                   | Default. Fast inference, OpenAI-compatible |
-| xAI Grok   | Limited         | Yes                  | Point `aiBaseUrl` to `https://api.x.ai/v1` |
-| OpenRouter | Varies by model | No (some models)     | Point `aiBaseUrl` accordingly              |
+| Provider   | Free tier              | Credit card required | Notes                                      |
+| ---------- | ---------------------- | -------------------- | ------------------------------------------ |
+| **Groq** ✓ | Yes, rate-limit capped | No                   | Default. Fast inference, OpenAI-compatible |
+| xAI Grok   | Limited                | Yes                  | Point `aiBaseUrl` to `https://api.x.ai/v1` |
+| OpenRouter | Varies by model        | No (some models)     | Point `aiBaseUrl` accordingly              |
 
 ---
 
@@ -583,7 +583,7 @@ configure({
   aiApiKey: process.env.GROQ_API_KEY, // gsk_...
   enableAISuggestions: true,
   // aiBaseUrl: "https://api.groq.com/openai/v1",  ← default, can omit
-  // aiModel: "llama-3.3-70b-versatile",           ← default, can omit
+  // aiModel: "openai/gpt-oss-120b",               ← default, can omit
 });
 
 // Then use analyzeErrorAsync anywhere you'd use analyzeError
@@ -730,7 +730,7 @@ configure({
 });
 ```
 
-> **Token budget:** when `aiFixSuggested` is requested, `max_tokens` is raised from 256 to 512. This is still well within Groq's free tier (6 000 tokens/min). `wrapAsyncWithAI` and `withErrorBoundaryAsync` automatically pass `fn.toString()` as context, so the fixed code they produce is always targeted at the exact function that threw.
+> **Token budget:** when `aiFixSuggested` is requested, `max_tokens` is raised from 256 to 512. This is still within Groq's free-tier per-request output needs. `wrapAsyncWithAI` and `withErrorBoundaryAsync` automatically pass `fn.toString()` as context, so the fixed code they produce is always targeted at the exact function that threw.
 
 ---
 
@@ -801,13 +801,13 @@ configure({ aiApiKey: process.env.GROQ_API_KEY, enableAISuggestions: true });
 app.use(expressErrorHandler({ enableAI: true }));
 ```
 
-**Free Groq models** (as of 2026):
+**Groq free-tier models**:
 
-| Model                     | Speed     | Best for                      |
-| ------------------------- | --------- | ----------------------------- |
-| `llama-3.3-70b-versatile` | Fast      | Default — best quality        |
-| `llama3-8b-8192`          | Very fast | High-throughput / low latency |
-| `gemma2-9b-it`            | Fast      | Alternative                   |
+| Model                 | Speed     | Best for                             |
+| --------------------- | --------- | ------------------------------------ |
+| `openai/gpt-oss-120b` | Very fast | Default — best Llama 70B replacement |
+| `openai/gpt-oss-20b`  | Fastest   | High-throughput / low latency        |
+| `qwen/qwen3.6-27b`    | Very fast | Alternative multilingual reasoning   |
 
 ---
 
@@ -870,7 +870,7 @@ configure({
   aiApiKey: process.env.GROQ_API_KEY, // gsk_... from console.groq.com
   enableAISuggestions: true, // default: false
   aiBaseUrl: "https://api.groq.com/openai/v1", // default — can omit
-  aiModel: "llama-3.3-70b-versatile", // default — can omit
+  aiModel: "openai/gpt-oss-120b", // default — can omit
   enableAIFix: true, // default: true — set false to skip aiFixSuggested
 });
 

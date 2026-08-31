@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.2] — 2026-08-31
+
+### Changed
+
+- Replaced the discontinued Groq free/developer-tier default model `llama-3.3-70b-versatile` with Groq's recommended replacement `openai/gpt-oss-120b`. The provider URL, API key flow, request shape, and fallback behavior are unchanged.
+
+---
+
 ## [0.2.0] — 2026-04-25
 
 ### What's new
 
 #### AI-powered suggestions (optional)
 
-You can now enrich any analyzed error with AI-generated fix suggestions from any **OpenAI-compatible provider**. The default is [Groq](https://console.groq.com) — free tier, no credit card, **14 400 requests/day**.
+You can now enrich any analyzed error with AI-generated fix suggestions from any **OpenAI-compatible provider**. The default is [Groq](https://console.groq.com) — free tier, no credit card required.
 
 ```ts
 import { configure, analyzeErrorAsync } from "error-intelligence-layer";
@@ -79,7 +87,7 @@ configure({ aiApiKey: process.env.OPENROUTER_API_KEY, aiBaseUrl: "https://openro
 
 ### Changed
 
-- `DEFAULT_CONFIG` now includes `enableAISuggestions: false`, `aiBaseUrl: "https://api.groq.com/openai/v1"`, `aiModel: "llama-3.3-70b-versatile"`
+- `DEFAULT_CONFIG` now includes `enableAISuggestions: false`, `aiBaseUrl: "https://api.groq.com/openai/v1"`, and an OpenAI-compatible Groq model default
 - `tsconfig.json` — added `"types": ["node"]`, included `tests/**/*` in `include`
 - README fully updated with AI setup guide, provider comparison table, context examples, and real-world patterns
 

@@ -4,7 +4,7 @@ import {
   wrapAsyncWithAI,
   withErrorBoundaryAsync,
 } from "../../src/core/analyzer.js";
-import { configure, resetConfig } from "../../src/index.js";
+import { configure, getConfig, resetConfig } from "../../src/index.js";
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -42,6 +42,10 @@ afterEach(() => {
 // ─────────────────────────────────────────────
 
 describe("analyzeErrorAsync — AI disabled", () => {
+  it("defaults to the current Groq free-tier replacement model", () => {
+    expect(getConfig().aiModel).toBe("openai/gpt-oss-120b");
+  });
+
   it("does not call fetch when enableAISuggestions is false (default)", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     const result = await analyzeErrorAsync(new TypeError("bad type"));
@@ -111,7 +115,7 @@ describe("analyzeErrorAsync — successful AI response", () => {
     configure({
       aiApiKey: "test-key",
       enableAISuggestions: true,
-      aiModel: "gemma2-9b-it",
+      aiModel: "openai/gpt-oss-20b",
     });
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: true,
@@ -121,7 +125,7 @@ describe("analyzeErrorAsync — successful AI response", () => {
     } as Response);
     await analyzeErrorAsync(new TypeError("test"));
     const body = JSON.parse(spy.mock.calls[0]![1]!.body as string);
-    expect(body.model).toBe("gemma2-9b-it");
+    expect(body.model).toBe("openai/gpt-oss-20b");
   });
 
   it("uses the configured aiBaseUrl when calling the provider", async () => {

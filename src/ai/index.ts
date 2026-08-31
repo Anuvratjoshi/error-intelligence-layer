@@ -240,7 +240,7 @@ export async function fetchAISuggestions(
   const prompt = buildPrompt(error, context, includeFix);
   const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 
-  // Use more tokens when the fix plan is also requested (still within free tier).
+  // Use more tokens when the fix plan is also requested.
   // suggestions-only: ~50 tokens output; with fix (up to 10 steps): ~200 tokens.
   const maxTokens = includeFix ? 512 : 256;
 

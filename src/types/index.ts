@@ -236,7 +236,7 @@ export interface EILConfig {
    * API key for your chosen AI provider (Groq, xAI, OpenRouter, etc.).
    * Each user supplies their own key — never shared.
    *
-   * Groq (free tier, 14 400 req/day, no credit card):
+   * Groq (free tier, no credit card):
    *   https://console.groq.com → API Keys → Create
    *
    * xAI Grok:
@@ -257,10 +257,10 @@ export interface EILConfig {
 
   /**
    * Model name passed to the provider.
-   * Defaults to `"llama-3.3-70b-versatile"` (free on Groq).
+   * Defaults to `"openai/gpt-oss-120b"` on Groq.
    *
-   * Groq free models: llama-3.3-70b-versatile, llama3-8b-8192, gemma2-9b-it
-   * xAI models:       grok-3-mini
+   * Groq free-tier models: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.6-27b
+   * xAI models:            grok-3-mini
    */
   aiModel: string;
 
@@ -278,7 +278,7 @@ export interface EILConfig {
    * Requires `enableAISuggestions: true` and a valid `aiApiKey`.
    *
    * Defaults to `true` — disable explicitly if you don't want the extra
-   * tokens consumed on the free tier during development.
+   * tokens consumed during development.
    */
   enableAIFix: boolean;
 }

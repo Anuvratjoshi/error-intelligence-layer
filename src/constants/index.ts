@@ -27,7 +27,7 @@ export const DEFAULT_CONFIG: Readonly<EILConfig> = Object.freeze({
   enablePlugins: true,
   enableAISuggestions: false,
   aiBaseUrl: "https://api.groq.com/openai/v1",
-  aiModel: "llama-3.3-70b-versatile",
+  aiModel: "openai/gpt-oss-120b",
   enableAIFix: true,
 });
 
